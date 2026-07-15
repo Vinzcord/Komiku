@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'kategori.dart';
 
-const String baseUrl = "https://ubaya.cloud/flutter/160423061";
+const String baseUrl = "https://ubaya.cloud/flutter/160423061/UAS";
 
 class Login extends StatefulWidget {
   const Login({super.key});
