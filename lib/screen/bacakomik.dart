@@ -2,222 +2,219 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../class/komik.dart';
 import '../class/komentar.dart';
 import 'login.dart';
 
 class BacaKomikScreen extends StatefulWidget {
-  final int komikId;
-  const BacaKomikScreen({super.key, required this.komikId});
+  final Komik komik;
+
+  const BacaKomikScreen({super.key, required this.komik});
 
   @override
-  State<StatefulWidget> createState() {
-    return _BacaKomikScreenState();
-  }
+  State<BacaKomikScreen> createState() => _BacaKomikScreenState();
 }
 
-class _BacaKomikScreenState extends State<BacaKomikScreen> with SingleTickerProviderStateMixin {
-  Komik? komik;
-  List<Komentar> komentarList = [];
-  int myRating = 0;
-  String? myUserId;
-  final _commentController = TextEditingController();
-  late TabController _tabController;
+class _BacaKomikScreenState extends State<BacaKomikScreen> {
+  List<String> gambar = [];
+  List<Komentar> komentar = [];
+
+  double rating = 0;
+
+  String username = "";
+
+  final TextEditingController txtKomentar = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    loadUserId();
-    bacaDetail();
-    bacaKomentar();
+    loadUser();
+    getGambar();
+    getKomentar();
+    getRating();
   }
 
-  Future<void> loadUserId() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    setState(() => myUserId = prefs.getString('user_id'));
+  Future<void> loadUser() async {
+    SharedPreferences pref = await SharedPreferences.getInstance();
+
+    username = pref.getString("username") ?? "";
   }
 
-  Future<void> bacaDetail() async {
+  Future<void> getGambar() async {
     final response = await http.post(
-      Uri.parse("$baseUrl/detailkomik.php"),
-      body: {'komik_id': widget.komikId.toString()},
+      Uri.parse("$baseUrl/komikku/get_gambar_komik.php"),
+      body: {"komik_id": widget.komik.id.toString()},
     );
+
     Map json = jsonDecode(response.body);
-    if (json['result'] == 'success') {
-      setState(() => komik = Komik.fromJson(json['data']));
+
+    if (json["status"] == "success") {
+      gambar.clear();
+
+      for (var g in json["data"]) {
+        gambar.add(g["url"]);
+      }
+
+      setState(() {});
     }
   }
 
-  Future<void> bacaKomentar() async {
+  Future<void> getKomentar() async {
     final response = await http.post(
-      Uri.parse("$baseUrl/commentlist.php"),
-      body: {'komik_id': widget.komikId.toString()},
+      Uri.parse("$baseUrl/komikku/get_komentar_komik.php"),
+      body: {"komik_id": widget.komik.id.toString()},
     );
+
     Map json = jsonDecode(response.body);
-    if (json['result'] == 'success') {
-      setState(() {
-        komentarList = (json['data'] as List).map((e) => Komentar.fromJson(e)).toList();
-      });
+
+    if (json["status"] == "success") {
+      komentar = (json["data"] as List)
+          .map((e) => Komentar.fromJson(e))
+          .toList();
+
+      setState(() {});
     }
   }
 
-  Future<void> kirimRating(int skor) async {
-    if (myUserId == null) {
-      _showLoginRequired();
-      return;
-    }
-    setState(() => myRating = skor);
-    await http.post(
-      Uri.parse("$baseUrl/addrating.php"),
-      body: {
-        'komik_id': widget.komikId.toString(),
-        'user_id': myUserId!,
-        'skor': skor.toString(),
-      },
+  Future<void> getRating() async {
+    final response = await http.post(
+      Uri.parse("$baseUrl/komikku/get_rating_komik.php"),
+      body: {"komik_id": widget.komik.id.toString()},
     );
-    bacaDetail();
+
+    Map json = jsonDecode(response.body);
+
+    if (json["status"] == "success") {
+      rating = double.parse(json["rata_rating"].toString());
+
+      setState(() {});
+    }
   }
 
   Future<void> kirimKomentar() async {
-    final text = _commentController.text.trim();
-    if (text.isEmpty) return;
-    if (myUserId == null) {
-      _showLoginRequired();
-      return;
-    }
-    await http.post(
-      Uri.parse("$baseUrl/addcomment.php"),
+    if (txtKomentar.text.trim().isEmpty) return;
+
+    print("USERNAME : $username");
+    print("KOMIK ID : ${widget.komik.id}");
+    print("ISI : ${txtKomentar.text}");
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/komikku/insert_komentar.php"),
       body: {
-        'komik_id': widget.komikId.toString(),
-        'user_id': myUserId!,
-        'isi': text,
+        "isi": txtKomentar.text,
+        "user_username": username,
+        "komik_id": widget.komik.id.toString(),
       },
     );
-    _commentController.clear();
-    bacaKomentar();
+
+    print(response.body);
+
+    txtKomentar.clear();
+
+    await getKomentar();
   }
 
-  void _showLoginRequired() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Silakan login terlebih dahulu')),
+  Future<void> kirimRating(int value) async {
+    await http.post(
+      Uri.parse("$baseUrl/komikku/insert_rating.php"),
+      body: {
+        "user": username,
+        "komik_id": widget.komik.id.toString(),
+        "value": value.toString(),
+      },
     );
+
+    getRating();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (komik == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(komik!.judul, overflow: TextOverflow.ellipsis),
-        bottom: TabBar(controller: _tabController, tabs: const [
-          Tab(text: 'Baca'),
-          Tab(text: 'Komentar'),
-        ]),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [tabBaca(), tabKomentar()],
-      ),
-    );
-  }
+      appBar: AppBar(title: Text(widget.komik.judul)),
+      body: ListView(
+        children: [
+          Image.network(widget.komik.poster, height: 250, fit: BoxFit.cover),
 
-  Widget tabBaca() {
-    final halaman = komik!.chapters.isNotEmpty ? komik!.chapters.first.halaman : <Halaman>[];
-    return ListView(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Text(komik!.author != null ? 'oleh ${komik!.author}' : ''),
-              const Spacer(),
-              const Icon(Icons.remove_red_eye, size: 16, color: Colors.grey),
-              Text(' ${komik!.viewCount}  '),
-              const Icon(Icons.comment, size: 16, color: Colors.grey),
-              Text(' ${komik!.commentCount}'),
-            ],
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              widget.komik.judul,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              Text('Rating: ${komik!.avgRating > 0 ? komik!.avgRating : "-"} (${komik!.ratingCount})'),
-              const Spacer(),
-              ...List.generate(5, (i) {
-                final star = i + 1;
-                return IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: Icon(star <= myRating ? Icons.star : Icons.star_border, color: Colors.amber, size: 22),
-                  onPressed: () => kirimRating(star),
-                );
-              }),
-            ],
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text("Author : ${widget.komik.author}"),
           ),
-        ),
-        const Divider(),
-        if (halaman.isEmpty)
+
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                const Icon(Icons.star, color: Colors.amber),
+
+                Text(rating.toString()),
+
+                const Spacer(),
+
+                for (int i = 1; i <= 5; i++)
+                  IconButton(
+                    onPressed: () {
+                      kirimRating(i);
+                    },
+                    icon: const Icon(Icons.star_border, color: Colors.amber),
+                  ),
+              ],
+            ),
+          ),
+
+          const Divider(),
+
+          ...gambar.map((e) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Image.network(e),
+            );
+          }).toList(),
+
+          const Divider(),
+
           const Padding(
-            padding: EdgeInsets.only(top: 40),
-            child: Center(child: Text('Belum ada halaman komik')),
-          )
-        else
-          ...halaman.map((h) => Image.network(
-                h.imageUrl,
-                fit: BoxFit.fitWidth,
-                width: double.infinity,
-                errorBuilder: (context, error, stackTrace) => Container(height: 200, color: Colors.grey.shade300, child: const Icon(Icons.broken_image)),
-              )),
-      ],
-    );
-  }
+            padding: EdgeInsets.all(12),
+            child: Text(
+              "Komentar",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+          ),
 
-  Widget tabKomentar() {
-    return Column(
-      children: [
-        Expanded(
-          child: komentarList.isEmpty
-              ? const Center(child: Text('Belum ada komentar'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: komentarList.length,
-                  itemBuilder: (context, index) => komentarItem(komentarList[index]),
-                ),
-        ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(8),
+          ...komentar.map((k) {
+            return ListTile(title: Text(k.userName), subtitle: Text(k.isi));
+          }).toList(),
+
+          Padding(
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
-                    controller: _commentController,
-                    decoration: const InputDecoration(hintText: 'Tulis komentar...'),
+                    controller: txtKomentar,
+                    decoration: const InputDecoration(
+                      hintText: "Tulis komentar...",
+                    ),
                   ),
                 ),
-                IconButton(icon: const Icon(Icons.send), onPressed: kirimKomentar),
+
+                IconButton(
+                  onPressed: () {
+                    kirimKomentar();
+                  },
+                  icon: const Icon(Icons.send),
+                ),
               ],
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget komentarItem(Komentar k, {bool isReply = false}) {
-    return Padding(
-      padding: EdgeInsets.only(left: isReply ? 28 : 0, bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(k.userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          Text(k.isi),
-          for (final r in k.replies) komentarItem(r, isReply: true),
         ],
       ),
     );

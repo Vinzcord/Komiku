@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'kategori.dart';
 
-const String baseUrl = "https://ubaya.cloud/flutter/160423061/UAS";
+const String baseUrl = "https://ubaya.cloud/flutter/160423098";
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -24,30 +24,32 @@ class _LoginState extends State<Login> {
 
   Future<void> doLogin() async {
     setState(() => _isLoading = true);
+
     final response = await http.post(
-      Uri.parse("$baseUrl/login.php"),
+      Uri.parse("$baseUrl/komikku/login.php"),
       body: {
-        'user_id': _userIdController.text,
-        'user_password': _passwordController.text,
+        'username': _userIdController.text,
+        'password': _passwordController.text,
       },
     );
 
     Map json = jsonDecode(response.body);
+
     setState(() => _isLoading = false);
 
-    if (json['result'] == 'success') {
+    if (json['status'] == 'success') {
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user_id', json['user_id']);
-      await prefs.setString('user_name', json['user_name']);
+
+      await prefs.setString('username', json['data']['username']);
 
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const KategoriScreen()),
+          MaterialPageRoute(builder: (_) => const KategoriScreen()),
         );
       }
     } else {
-      _showMessage(json['message'] ?? 'Login gagal');
+      _showMessage(json['message']);
     }
   }
 
@@ -57,8 +59,8 @@ class _LoginState extends State<Login> {
       Uri.parse("$baseUrl/register.php"),
       body: {
         'user_id': _userIdController.text,
-        'user_password': _passwordController.text,
-        'user_name': _userNameController.text,
+        'password': _passwordController.text,
+        'username': _userNameController.text,
       },
     );
 
@@ -80,7 +82,9 @@ class _LoginState extends State<Login> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_isRegisterMode ? 'Daftar Akun' : 'Login Komiku')),
+      appBar: AppBar(
+        title: Text(_isRegisterMode ? 'Daftar Akun' : 'Login Komiku'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: ListView(
@@ -109,8 +113,13 @@ class _LoginState extends State<Login> {
                     child: Text(_isRegisterMode ? 'Daftar' : 'Login'),
                   ),
             TextButton(
-              onPressed: () => setState(() => _isRegisterMode = !_isRegisterMode),
-              child: Text(_isRegisterMode ? 'Sudah punya akun? Login' : 'Belum punya akun? Daftar'),
+              onPressed: () =>
+                  setState(() => _isRegisterMode = !_isRegisterMode),
+              child: Text(
+                _isRegisterMode
+                    ? 'Sudah punya akun? Login'
+                    : 'Belum punya akun? Daftar',
+              ),
             ),
           ],
         ),

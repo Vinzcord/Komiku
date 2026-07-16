@@ -20,7 +20,9 @@ class _KategoriScreenState extends State<KategoriScreen> {
   List<Kategori> kategoriList = [];
 
   Future<String> fetchData() async {
-    final response = await http.post(Uri.parse("$baseUrl/kategorilist.php"));
+    final response = await http.post(
+      Uri.parse("$baseUrl/komikku/get_all_kategori.php"),
+    );
     if (response.statusCode == 200) {
       return response.body;
     } else {
@@ -29,17 +31,27 @@ class _KategoriScreenState extends State<KategoriScreen> {
   }
 
   Future<void> bacaData() async {
-    Future<String> data = fetchData();
-    data.then((value) {
+    try {
+      final value = await fetchData();
+
+      print(value); 
+
       Map json = jsonDecode(value);
+
       kategoriList.clear();
-      if (json['result'] == 'success') {
+
+      if (json['status'] == 'success') {
         for (var kat in json['data']) {
           kategoriList.add(Kategori.fromJson(kat));
         }
+      } else {
+        print(json['message']);
       }
+
       setState(() {});
-    });
+    } catch (e) {
+      print(e);
+    }
   }
 
   @override
@@ -65,14 +77,18 @@ class _KategoriScreenState extends State<KategoriScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => DaftarKomikScreen(kategori: kategoriList[index]),
+                  builder: (context) =>
+                      DaftarKomikScreen(kategori: kategoriList[index]),
                 ),
               );
             },
             child: Center(
               child: Text(
                 kategoriList[index].kategoriNama,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
@@ -90,15 +106,25 @@ class _KategoriScreenState extends State<KategoriScreen> {
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const CariKomikScreen()));
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CariKomikScreen(),
+                ),
+              );
             },
           ),
         ],
       ),
-      body: kategoriList.isNotEmpty ? daftarKategori() : const Center(child: CircularProgressIndicator()),
+      body: kategoriList.isNotEmpty
+          ? daftarKategori()
+          : const Center(child: CircularProgressIndicator()),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const BuatKomikScreen()));
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const BuatKomikScreen()),
+          );
         },
         icon: const Icon(Icons.add),
         label: const Text('Buat Komik'),

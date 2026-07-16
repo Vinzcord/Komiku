@@ -40,7 +40,7 @@ class _SplashDeciderState extends State<SplashDecider> {
 
   Future<void> cekLogin() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? userId = prefs.getString('user_id');
+    String? userId = prefs.getString('username');
     await Future.delayed(const Duration(milliseconds: 300));
     if (!mounted) return;
     Navigator.pushReplacement(

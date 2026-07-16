@@ -6,8 +6,8 @@ class Kategori {
 
   factory Kategori.fromJson(Map<String, dynamic> json) {
     return Kategori(
-      kategoriId: int.parse(json['kategori_id'].toString()),
-      kategoriNama: json['kategori_nama'],
+      kategoriId: int.parse(json['id'].toString()),
+      kategoriNama: json['name'],
     );
   }
 }
