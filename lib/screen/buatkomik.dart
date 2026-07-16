@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../class/kategori.dart';
@@ -15,11 +18,14 @@ class BuatKomikScreen extends StatefulWidget {
 
 class _BuatKomikScreenState extends State<BuatKomikScreen> {
   final TextEditingController judulController = TextEditingController();
-  final TextEditingController posterController = TextEditingController();
 
-  List<TextEditingController> halamanController = [TextEditingController()];
+  final ImagePicker picker = ImagePicker();
+
+  XFile? posterFile;
+  List<XFile> halamanFiles = [];
 
   List<Kategori> kategoriList = [];
+
   Set<int> kategoriTerpilih = {};
 
   bool loading = false;
@@ -46,32 +52,102 @@ class _BuatKomikScreenState extends State<BuatKomikScreen> {
     }
   }
 
+  Future<void> pilihPoster() async {
+    final XFile? file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+
+    if (file != null) {
+      setState(() {
+        posterFile = file;
+      });
+    }
+  }
+
+  Future<void> pilihHalaman() async {
+    final files = await picker.pickMultiImage(imageQuality: 80);
+
+    if (files.isNotEmpty) {
+      setState(() {
+        halamanFiles.addAll(files);
+      });
+    }
+  }
+
+  Future<String?> uploadPoster() async {
+    if (posterFile == null) return null;
+
+    final bytes = await posterFile!.readAsBytes();
+
+    print("Nama File : ${posterFile!.name}");
+    print("Ext : ${posterFile!.name.split(".").last}");
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/komikku/uploadposter64.php"),
+      body: {
+        "poster_base64": base64Encode(bytes),
+        "ext": posterFile!.name.split(".").last,
+      },
+    );
+
+    print("UPLOAD POSTER");
+    print(response.body);
+
+    Map json = jsonDecode(response.body);
+
+    if (json["result"] == "success") {
+      return json["url"];
+    }
+
+    return null;
+  }
+
+  Future<List<String>> uploadHalaman() async {
+    List<String> hasil = [];
+
+    for (XFile file in halamanFiles) {
+      final bytes = await file.readAsBytes();
+
+      final response = await http.post(
+        Uri.parse("$baseUrl/komikku/uploadhalaman64.php"),
+        body: {
+          "halaman_base64": base64Encode(bytes),
+          "ext": file.name.split(".").last,
+        },
+      );
+
+      print("UPLOAD HALAMAN");
+      print(response.body);
+
+      Map json = jsonDecode(response.body);
+
+      if (json["result"] == "success") {
+        hasil.add(json["url"]);
+      }
+    }
+
+    return hasil;
+  }
+
   Future<void> simpanKomik() async {
     if (judulController.text.trim().isEmpty) {
-      tampilPesan("Judul wajib diisi");
+      tampilPesan("Judul komik wajib diisi");
       return;
     }
 
-    if (posterController.text.trim().isEmpty) {
-      tampilPesan("Poster wajib diisi");
+    if (posterFile == null) {
+      tampilPesan("Pilih poster terlebih dahulu");
       return;
     }
 
     if (kategoriTerpilih.isEmpty) {
-      tampilPesan("Pilih minimal satu kategori");
+      tampilPesan("Pilih minimal 1 kategori");
       return;
     }
 
-    List<String> daftarGambar = [];
-
-    for (var c in halamanController) {
-      if (c.text.trim().isNotEmpty) {
-        daftarGambar.add(c.text.trim());
-      }
-    }
-
-    if (daftarGambar.isEmpty) {
-      tampilPesan("Minimal satu halaman");
+    if (halamanFiles.isEmpty) {
+      tampilPesan("Pilih minimal 1 halaman komik");
       return;
     }
 
@@ -83,11 +159,33 @@ class _BuatKomikScreenState extends State<BuatKomikScreen> {
       loading = true;
     });
 
+    String? posterUrl = await uploadPoster();
+
+    if (posterUrl == null) {
+      setState(() {
+        loading = false;
+      });
+
+      tampilPesan("Upload poster gagal");
+      return;
+    }
+
+    List<String> daftarGambar = await uploadHalaman();
+
+    if (daftarGambar.isEmpty) {
+      setState(() {
+        loading = false;
+      });
+
+      tampilPesan("Upload halaman gagal");
+      return;
+    }
+
     final response = await http.post(
       Uri.parse("$baseUrl/komikku/insert_komik.php"),
       body: {
-        "judul": judulController.text,
-        "poster": posterController.text,
+        "judul": judulController.text.trim(),
+        "poster": posterUrl,
         "author": author,
         "kategori_ids": jsonEncode(kategoriTerpilih.toList()),
         "daftar_gambar": jsonEncode(daftarGambar),
@@ -106,10 +204,10 @@ class _BuatKomikScreenState extends State<BuatKomikScreen> {
       tampilPesan("Komik berhasil dibuat");
 
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context, true);
       }
     } else {
-      tampilPesan(json["message"]);
+      tampilPesan(json["message"] ?? "Gagal membuat komik");
     }
   }
 
@@ -120,11 +218,6 @@ class _BuatKomikScreenState extends State<BuatKomikScreen> {
   @override
   void dispose() {
     judulController.dispose();
-    posterController.dispose();
-
-    for (var c in halamanController) {
-      c.dispose();
-    }
 
     super.dispose();
   }
@@ -136,6 +229,7 @@ class _BuatKomikScreenState extends State<BuatKomikScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          /// Judul
           TextField(
             controller: judulController,
             decoration: const InputDecoration(
@@ -144,19 +238,56 @@ class _BuatKomikScreenState extends State<BuatKomikScreen> {
             ),
           ),
 
-          const SizedBox(height: 15),
+          const SizedBox(height: 20),
 
-          TextField(
-            controller: posterController,
-            decoration: const InputDecoration(
-              labelText: "URL Poster",
-              hintText: "https://...",
-              border: OutlineInputBorder(),
+          /// Poster
+          const Text(
+            "Poster Komik",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+
+          const SizedBox(height: 10),
+
+          Center(
+            child: GestureDetector(
+              onTap: pilihPoster,
+              child: Container(
+                width: 180,
+                height: 240,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                ),
+                child: posterFile == null
+                    ? const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add_photo_alternate, size: 50),
+                          SizedBox(height: 10),
+                          Text("Pilih Poster"),
+                        ],
+                      )
+                    : FutureBuilder<Uint8List>(
+                        future: posterFile!.readAsBytes(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+
+                          return Image.memory(
+                            snapshot.data!,
+                            fit: BoxFit.cover,
+                          );
+                        },
+                      ),
+              ),
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 25),
 
+          /// Kategori
           const Text(
             "Kategori",
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -186,21 +317,16 @@ class _BuatKomikScreenState extends State<BuatKomikScreen> {
 
           const SizedBox(height: 25),
 
+          /// Halaman
           Row(
             children: [
               const Text(
                 "Halaman Komik",
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
-
               const Spacer(),
-
               ElevatedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    halamanController.add(TextEditingController());
-                  });
-                },
+                onPressed: pilihHalaman,
                 icon: const Icon(Icons.add),
                 label: const Text("Tambah"),
               ),
@@ -209,54 +335,83 @@ class _BuatKomikScreenState extends State<BuatKomikScreen> {
 
           const SizedBox(height: 10),
 
-          ...List.generate(halamanController.length, (index) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: halamanController[index],
-                      decoration: InputDecoration(
-                        labelText: "URL Halaman ${index + 1}",
-                        hintText: "https://...",
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
+          halamanFiles.isEmpty
+              ? Container(
+                  height: 120,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
                   ),
+                  child: const Text("Belum ada halaman"),
+                )
+              : GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: halamanFiles.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                  ),
+                  itemBuilder: (context, index) {
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        FutureBuilder<Uint8List>(
+                          future: halamanFiles[index].readAsBytes(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            }
 
-                  if (halamanController.length > 1)
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () {
-                        setState(() {
-                          halamanController[index].dispose();
-                          halamanController.removeAt(index);
-                        });
-                      },
-                    ),
-                ],
-              ),
-            );
-          }),
+                            return Image.memory(
+                              snapshot.data!,
+                              fit: BoxFit.cover,
+                            );
+                          },
+                        ),
 
-          const SizedBox(height: 25),
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                halamanFiles.removeAt(index);
+                              });
+                            },
+                            child: Container(
+                              color: Colors.black54,
+                              padding: const EdgeInsets.all(4),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+
+          const SizedBox(height: 30),
 
           loading
               ? const Center(child: CircularProgressIndicator())
               : SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
+                  height: 50,
+                  child: ElevatedButton.icon(
                     onPressed: simpanKomik,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    child: const Text(
-                      "Terbitkan Komik",
-                      style: TextStyle(fontSize: 16),
-                    ),
+                    icon: const Icon(Icons.upload),
+                    label: const Text("Terbitkan Komik"),
                   ),
                 ),
+
+          const SizedBox(height: 30),
         ],
       ),
     );
